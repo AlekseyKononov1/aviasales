@@ -1,53 +1,51 @@
 package main
 
 import (
-	"database/sql"
-	"fmt"
-	"log"
+	"aviasales/internal/config"
+	"aviasales/internal/db"
+	"aviasales/internal/logs"
+	"log/slog"
+	"net/http"
 	"os"
-	"time"
-
-	_ "github.com/lib/pq"
 )
 
 func main() {
-	host := os.Getenv("DB_HOST")
-	user := os.Getenv("DB_USER")
-	password := os.Getenv("DB_PASSWORD")
-	dbname := os.Getenv("DB_NAME")
+	cfg := config.Load()
 
-	psqlInfo := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s sslmode=disable",
-		host, user, password, dbname,
+	logger := logs.New(os.Stdout)
+
+	pool, err := db.New(
+		db.ConnParams{
+			Host:     cfg.Host,
+			User:     cfg.User,
+			Password: cfg.Password,
+			DBName:   cfg.DBName,
+		},
+		logger,
 	)
-
-	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
-		log.Fatalf("Error opening database: %v", err)
+		logger.Error("db init failed", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
-	defer db.Close()
+	defer pool.Close()
 
-	for {
-		err = db.Ping()
-		if err == nil {
-			break
-		}
-		log.Println("Database not ready, retrying...")
-		time.Sleep(4 * time.Second)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/test", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status": "rly ok"}`))
+	})
+
+	srv := &http.Server{
+		Addr:         cfg.Addr,
+		Handler:      mux,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	}
 
-	rows, err := db.Query("SELECT count(*) FROM bookings.bookings")
-	if err != nil {
-		log.Fatalf("Query failed: %v", err)
-	}
-	defer rows.Close()
-
-	fmt.Println("Users in database:")
-	for rows.Next() {
-		var count int
-		if err := rows.Scan(&count); err != nil {
-			log.Fatalf("Row scan failed: %v", err)
-		}
-		fmt.Printf("rows in Bookings%v\n", count)
+	logger.Info("server starting", slog.String("addr", cfg.Addr))
+	err = srv.ListenAndServe()
+	if err != nil && err != http.ErrServerClosed {
+		logger.Error("server error", slog.String("error", err.Error()))
 	}
 }
