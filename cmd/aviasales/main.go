@@ -4,7 +4,9 @@ import (
 	"aviasales/internal/config"
 	"aviasales/internal/db"
 	"aviasales/internal/logs"
+	"aviasales/internal/repository"
 	"aviasales/internal/router"
+	"aviasales/internal/service"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,7 +32,12 @@ func main() {
 	}
 	defer pool.Close()
 
-	r := router.New(logger)
+	bookRepo := repository.NewBookingRepo(pool.DB)
+	flightRepo := repository.NewFlightsRepo(pool.DB)
+	segmentsRepo := repository.NewSegmentsRepo(pool.DB)
+	bookingSvc := service.NewBookingService(bookRepo, flightRepo, segmentsRepo, logger)
+
+	r := router.New(bookingSvc, logger)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
