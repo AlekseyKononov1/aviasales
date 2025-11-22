@@ -4,6 +4,7 @@ import (
 	"aviasales/internal/config"
 	"aviasales/internal/db"
 	"aviasales/internal/logs"
+	"aviasales/internal/router"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,16 +30,11 @@ func main() {
 	}
 	defer pool.Close()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/test", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "rly ok"}`))
-	})
+	r := router.New(logger)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
-		Handler:      mux,
+		Handler:      r,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 	}
